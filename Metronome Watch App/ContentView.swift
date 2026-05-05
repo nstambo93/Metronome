@@ -9,7 +9,6 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var engine = MetronomeEngine()
-    // Read default BPM from UserDefaults on first launch
     @State private var bpm: Double = {
         let saved = UserDefaults.standard.object(forKey: "defaultBPM") as? Double
         return saved ?? 180
@@ -17,9 +16,12 @@ struct ContentView: View {
     @State private var showSettings = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                // Large BPM display – focusable, crown‑adjustable
+        ZStack(alignment: .topLeading) {
+            // Main controls – fit without scrolling
+            VStack(spacing: 6) {
+                Spacer(minLength: 16) // push content down a bit to clear the gear icon
+
+                // BPM display – large, focusable for crown
                 Text("\(Int(bpm)) BPM")
                     .font(.largeTitle)
                     .fontWeight(.bold)
@@ -37,21 +39,21 @@ struct ContentView: View {
                         engine.updateBPM(newValue)
                     }
 
-                // Manual +/- buttons (step 5)
-                HStack(spacing: 24) {
-                    Button(action: {
+                // +/- buttons (step 5)
+                HStack(spacing: 16) {
+                    Button {
                         bpm = max(120, bpm - 5)
                         engine.updateBPM(bpm)
-                    }) {
+                    } label: {
                         Image(systemName: "minus.circle.fill")
                             .font(.title2)
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    Button(action: {
+                    Button {
                         bpm = min(200, bpm + 5)
                         engine.updateBPM(bpm)
-                    }) {
+                    } label: {
                         Image(systemName: "plus.circle.fill")
                             .font(.title2)
                     }
@@ -59,40 +61,42 @@ struct ContentView: View {
                 }
 
                 // Start / Stop
-                Button(action: {
+                Button {
                     if engine.isRunning {
                         engine.stop()
                     } else {
                         engine.start(bpm: bpm)
                     }
-                }) {
+                } label: {
                     Text(engine.isRunning ? "Stop" : "Start")
-                        .font(.title2)
-                        .padding()
+                        .font(.title3)
+                        .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
                         .background(engine.isRunning ? Color.red : Color.green)
-                        .cornerRadius(12)
+                        .cornerRadius(10)
                 }
                 .buttonStyle(PlainButtonStyle())
 
                 // Status
                 Text(engine.isRunning ? (engine.forceHapticOnly ? "Tapping (haptic)" : "Ticking...") : "Ready")
                     .foregroundColor(.secondary)
-                    .font(.caption)
+                    .font(.caption2)
 
-                // Settings button
-                Button(action: {
-                    showSettings.toggle()
-                }) {
-                    HStack {
-                        Image(systemName: "gear")
-                        Text("Settings")
-                    }
-                    .font(.caption)
-                }
-                .buttonStyle(PlainButtonStyle())
+                Spacer(minLength: 8)
             }
-            .padding()
+            .padding(.horizontal, 12)
+
+            // Top‑left settings gear
+            Button {
+                showSettings.toggle()
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.leading, 12)
+            .padding(.top, 8)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(engine: engine)
