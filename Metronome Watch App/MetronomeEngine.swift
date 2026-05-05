@@ -17,8 +17,11 @@ class MetronomeEngine: NSObject, ObservableObject {
     private var bpm: Double = 180
     private var audioPlayer: AVAudioPlayer?
     private var useAudio = false
+<<<<<<< HEAD
     private var audioEngine: AVAudioEngine?
     private var silentNode: AVAudioPlayerNode?
+=======
+>>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
 
     // HealthKit workout session (keeps app alive during run)
     private let healthStore = HKHealthStore()
@@ -89,7 +92,10 @@ class MetronomeEngine: NSObject, ObservableObject {
         useAudio = isHeadphonesConnected()
         startWorkoutSession()
         startTimer()
+<<<<<<< HEAD
         startSilentBackgroundAudio()
+=======
+>>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
         isRunning = true
     }
 
@@ -97,7 +103,10 @@ class MetronomeEngine: NSObject, ObservableObject {
         timer?.cancel()
         timer = nil
         stopWorkoutSession()
+<<<<<<< HEAD
         stopSilentBackgroundAudio()
+=======
+>>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
         isRunning = false
     }
 
@@ -124,6 +133,7 @@ class MetronomeEngine: NSObject, ObservableObject {
         }
     }
 
+<<<<<<< HEAD
     private func startSilentBackgroundAudio() {
         // Create and configure the engine
         let engine = AVAudioEngine()
@@ -174,6 +184,8 @@ class MetronomeEngine: NSObject, ObservableObject {
         audioEngine = nil
     }
     
+=======
+>>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
     // MARK: - HKWorkoutSession (keeps app alive, saves minimal workout)
     private func startWorkoutSession() {
         let config = HKWorkoutConfiguration()
