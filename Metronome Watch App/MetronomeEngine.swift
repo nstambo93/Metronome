@@ -10,6 +10,12 @@ class MetronomeEngine: NSObject, ObservableObject {
     private var bpm: Double = 180
     private var audioPlayer: AVAudioPlayer?
     private var useAudio = false
+    // Haptic toggle
+    @Published var forceHapticOnly = false {
+        didSet {
+            updateUseAudio()
+        }
+    }
 
     // Silent background audio (AVAudioEngine) – proven to keep session alive when minimized
     private var audioEngine: AVAudioEngine?
@@ -73,14 +79,18 @@ class MetronomeEngine: NSObject, ObservableObject {
 
     @objc private func audioRouteChanged(notification: Notification) {
         DispatchQueue.main.async {
-            self.useAudio = self.isHeadphonesConnected()
+            // Haptic toggle
+            self.updateUseAudio()
+//            self.useAudio = self.isHeadphonesConnected()
         }
     }
 
     // MARK: - Start / Stop (with HealthKit authorization)
     func start(bpm: Double) {
         self.bpm = bpm
-        useAudio = isHeadphonesConnected()
+        // Haptic toggle
+        updateUseAudio()
+//        useAudio = isHeadphonesConnected()
         requestHealthKitAuthorization { [weak self] authorized in
             guard let self = self, authorized else {
                 print("HealthKit authorization denied")
@@ -250,6 +260,21 @@ class MetronomeEngine: NSObject, ObservableObject {
                     if let error = error { print("Finish workout error: \(error)") }
                 }
             }
+        }
+    }
+    
+    // Haptic toggle
+    private func updateUseAudio() {
+        useAudio = !forceHapticOnly && isHeadphonesConnected()
+    }
+    
+    func updateBPM(_ newBPM: Double) {
+        guard newBPM > 0 else { return }
+        bpm = newBPM
+        // Only restart the timer – keep workout session and silent audio alive
+        if isRunning {
+            timer?.cancel()
+            startTimer()
         }
     }
 }

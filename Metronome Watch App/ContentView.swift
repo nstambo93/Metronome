@@ -9,41 +9,93 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var engine = MetronomeEngine()
-    @State private var bpm: Double = 180
+    // Read default BPM from UserDefaults on first launch
+    @State private var bpm: Double = {
+        let saved = UserDefaults.standard.object(forKey: "defaultBPM") as? Double
+        return saved ?? 180
+    }()
+    @State private var showSettings = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("\(Int(bpm)) BPM")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+        ScrollView {
+            VStack(spacing: 12) {
+                // Large BPM display – focusable, crown‑adjustable
+                Text("\(Int(bpm)) BPM")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .focusable(true)
+                    .digitalCrownRotation(
+                        $bpm,
+                        from: 120.0,
+                        through: 200.0,
+                        by: 5.0,
+                        sensitivity: .low,
+                        isContinuous: false,
+                        isHapticFeedbackEnabled: true
+                    )
+                    .onChange(of: bpm) { oldValue, newValue in
+                        engine.updateBPM(newValue)
+                    }
 
-            Slider(value: $bpm, in: 120...200, step: 1) {
-                Text("BPM")
-            }
-            .padding(.horizontal)
+                // Manual +/- buttons (step 5)
+                HStack(spacing: 24) {
+                    Button(action: {
+                        bpm = max(120, bpm - 5)
+                        engine.updateBPM(bpm)
+                    }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title2)
+                    }
+                    .buttonStyle(PlainButtonStyle())
 
-            Button(action: {
-                if engine.isRunning {
-                    engine.stop()
-                } else {
-                    engine.start(bpm: bpm)
+                    Button(action: {
+                        bpm = min(200, bpm + 5)
+                        engine.updateBPM(bpm)
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-            }) {
-                Text(engine.isRunning ? "Stop" : "Start")
-                    .font(.title2)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(engine.isRunning ? Color.red : Color.green)
-                    .cornerRadius(12)
-            }
-            .buttonStyle(PlainButtonStyle())
 
-            // Small status indicator
-            Text(engine.isRunning ? "Ticking..." : "Ready")
-                .foregroundColor(.secondary)
-                .font(.caption)
+                // Start / Stop
+                Button(action: {
+                    if engine.isRunning {
+                        engine.stop()
+                    } else {
+                        engine.start(bpm: bpm)
+                    }
+                }) {
+                    Text(engine.isRunning ? "Stop" : "Start")
+                        .font(.title2)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(engine.isRunning ? Color.red : Color.green)
+                        .cornerRadius(12)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Status
+                Text(engine.isRunning ? (engine.forceHapticOnly ? "Tapping (haptic)" : "Ticking...") : "Ready")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+
+                // Settings button
+                Button(action: {
+                    showSettings.toggle()
+                }) {
+                    HStack {
+                        Image(systemName: "gear")
+                        Text("Settings")
+                    }
+                    .font(.caption)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding()
         }
-        .padding()
+        .sheet(isPresented: $showSettings) {
+            SettingsView(engine: engine)
+        }
     }
 }
-
