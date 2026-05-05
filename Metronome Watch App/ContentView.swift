@@ -43,26 +43,26 @@ struct ContentView: View {
                     engine.updateBPM(clamped)
                 }
 
-            // +/- buttons (step 5)
-            HStack(spacing: 16) {
-                Button {
-                    bpm = max(120, bpm - 5)
-                    engine.updateBPM(bpm)
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title2)
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Button {
-                    bpm = min(200, bpm + 5)
-                    engine.updateBPM(bpm)
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
+//            // +/- buttons (step 5)
+//            HStack(spacing: 16) {
+//                Button {
+//                    bpm = max(120, bpm - 5)
+//                    engine.updateBPM(bpm)
+//                } label: {
+//                    Image(systemName: "minus.circle.fill")
+//                        .font(.title2)
+//                }
+//                .buttonStyle(PlainButtonStyle())
+//
+//                Button {
+//                    bpm = min(200, bpm + 5)
+//                    engine.updateBPM(bpm)
+//                } label: {
+//                    Image(systemName: "plus.circle.fill")
+//                        .font(.title2)
+//                }
+//                .buttonStyle(PlainButtonStyle())
+//            }
 
             // Start / Stop
             Button {
