@@ -29,7 +29,7 @@ struct ContentView: View {
                     from: 120.0,
                     through: 200.0,
                     by: 5.0,
-                    sensitivity: .low,
+                    sensitivity: .medium,
                     isContinuous: false,
                     isHapticFeedbackEnabled: true
                 )
