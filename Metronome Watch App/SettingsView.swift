@@ -13,18 +13,6 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            // Haptic‑Only toggle (existing)
-            Section {
-                Toggle(isOn: $engine.forceHapticOnly) {
-                    Text("Haptic Only")
-                        .font(.caption)
-                }
-                .padding(.vertical, 4)
-            } footer: {
-                Text("Always use haptics, even with headphones connected.")
-                    .font(.caption2)
-            }
-
             // Default BPM (new)
             Section {
                 VStack(alignment: .leading, spacing: 4) {
@@ -49,8 +37,17 @@ struct SettingsView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
+            }
+            
+            // Haptic‑Only toggle (existing)
+            Section {
+                Toggle(isOn: $engine.forceHapticOnly) {
+                    Text("Haptic Only")
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
             } footer: {
-                Text("BPM used when the app starts. Changes take effect next launch.")
+                Text("Always use haptics, even with headphones connected.")
                     .font(.caption2)
             }
         }
