@@ -1,10 +1,3 @@
-//
-//  MetronomeEngine.swift
-//  Metronome Watch App
-//
-//  Created by Nick Stamboolian on 5/4/26.
-//
-
 import Foundation
 import AVFAudio
 import WatchKit
@@ -17,19 +10,17 @@ class MetronomeEngine: NSObject, ObservableObject {
     private var bpm: Double = 180
     private var audioPlayer: AVAudioPlayer?
     private var useAudio = false
-<<<<<<< HEAD
+
+    // Silent background audio (AVAudioEngine) – proven to keep session alive when minimized
     private var audioEngine: AVAudioEngine?
     private var silentNode: AVAudioPlayerNode?
-=======
->>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
 
-    // HealthKit workout session (keeps app alive during run)
+    // HealthKit workout session
     private let healthStore = HKHealthStore()
     private var workoutSession: HKWorkoutSession?
     private var workoutBuilder: HKLiveWorkoutBuilder?
 
     private let woodblockURL: URL? = {
-        // Make sure the filename & extension match your actual file
         Bundle.main.url(forResource: "woodblock", withExtension: "m4a")
     }()
 
@@ -40,7 +31,7 @@ class MetronomeEngine: NSObject, ObservableObject {
         observeRouteChanges()
     }
 
-    // MARK: - Audio session
+    // MARK: - Audio session (simple playback, mixes with music)
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
@@ -86,28 +77,32 @@ class MetronomeEngine: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Start / Stop
+    // MARK: - Start / Stop (with HealthKit authorization)
     func start(bpm: Double) {
         self.bpm = bpm
         useAudio = isHeadphonesConnected()
-        startWorkoutSession()
-        startTimer()
-<<<<<<< HEAD
-        startSilentBackgroundAudio()
-=======
->>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
-        isRunning = true
+        requestHealthKitAuthorization { [weak self] authorized in
+            guard let self = self, authorized else {
+                print("HealthKit authorization denied")
+                return
+            }
+            self.startWorkoutSession()
+            self.startTimer()
+            self.startSilentBackgroundAudio()
+            DispatchQueue.main.async {
+                self.isRunning = true
+            }
+        }
     }
 
     func stop() {
         timer?.cancel()
         timer = nil
         stopWorkoutSession()
-<<<<<<< HEAD
         stopSilentBackgroundAudio()
-=======
->>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
-        isRunning = false
+        DispatchQueue.main.async {
+            self.isRunning = false
+        }
     }
 
     // MARK: - Timer & Beat
@@ -133,48 +128,49 @@ class MetronomeEngine: NSObject, ObservableObject {
         }
     }
 
-<<<<<<< HEAD
+    // MARK: - Silent background audio (AVAudioEngine – proven on watchOS)
     private func startSilentBackgroundAudio() {
-        // Create and configure the engine
         let engine = AVAudioEngine()
-        let playerNode = AVAudioPlayerNode()
-        
-        // Attach the player node to the engine
-        engine.attach(playerNode)
-        
-        // Connect the player node to the main mixer (silent output)
-        let mainMixer = engine.mainMixerNode
-        engine.connect(playerNode, to: mainMixer, format: nil)
-        
-        // Create a short silent audio buffer (0.1 seconds of silence)
-        // Sample rate: 44100 Hz, mono, 16-bit PCM = 2 bytes per frame
+        let player = AVAudioPlayerNode()
+
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: nil)
+
+        // Create a short silent buffer that matches the player's output format
         let sampleRate = 44100.0
         let duration = 0.1
-        let frames = AVAudioFrameCount(sampleRate * duration)
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: playerNode.outputFormat(forBus: 0),
-            frameCapacity: frames
-        ) else {
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+
+        // Important: use the player node's output format to avoid channel count mismatch
+        let mixerFormat = player.outputFormat(forBus: 0)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: mixerFormat, frameCapacity: frameCount) else {
             print("Failed to create silent buffer")
             return
         }
-        buffer.frameLength = frames
-        // Data is already zeroed (silence)
-        
-        // Start the engine
+        buffer.frameLength = frameCount
+        // buffer is already zeroed (silent)
+
+        player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
+
         do {
             try engine.start()
         } catch {
-            print("Audio engine start error: \(error.localizedDescription)")
+            print("Silent engine start error: \(error.localizedDescription)")
             return
         }
-        
-        // Schedule the buffer to loop indefinitely
-        playerNode.scheduleBuffer(buffer, at: nil, options: .loops)
-        playerNode.play()
-        
+
+        player.play()
+
         audioEngine = engine
-        silentNode = playerNode
+        silentNode = player
+
+        // Listen for interruptions (widgets, calls) so we can restart
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioInterruption),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
     }
 
     private func stopSilentBackgroundAudio() {
@@ -182,15 +178,48 @@ class MetronomeEngine: NSObject, ObservableObject {
         silentNode = nil
         audioEngine?.stop()
         audioEngine = nil
+
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
     }
-    
-=======
->>>>>>> c7a9b4dee40fc655410f676e19c333d606b14a2f
-    // MARK: - HKWorkoutSession (keeps app alive, saves minimal workout)
+
+    @objc private func handleAudioInterruption(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        if type == .ended {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.isRunning else { return }
+                // Restart the silent engine after interruption ends
+                self.stopSilentBackgroundAudio()
+                self.startSilentBackgroundAudio()
+            }
+        }
+    }
+
+    // MARK: - HealthKit authorization (asks once, then remembers)
+    private func requestHealthKitAuthorization(completion: @escaping (Bool) -> Void) {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            completion(false)
+            return
+        }
+        let workoutType = HKObjectType.workoutType()
+        healthStore.requestAuthorization(toShare: [workoutType], read: []) { success, error in
+            DispatchQueue.main.async {
+                completion(success)
+            }
+        }
+    }
+
+    // MARK: - HKWorkoutSession (keeps app alive)
     private func startWorkoutSession() {
         let config = HKWorkoutConfiguration()
         config.activityType = .running
-        config.locationType = .outdoor   // change to .indoor if you prefer
+        config.locationType = .outdoor
 
         do {
             workoutSession = try HKWorkoutSession(healthStore: healthStore,
