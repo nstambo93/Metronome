@@ -11,8 +11,9 @@ class MetronomeEngine: NSObject, ObservableObject {
     private var audioPlayer: AVAudioPlayer?
     private var useAudio = false
     // Haptic toggle
-    @Published var forceHapticOnly = false {
+    @Published var forceHapticOnly: Bool = UserDefaults.standard.bool(forKey: "forceHapticOnly") {
         didSet {
+            UserDefaults.standard.set(forceHapticOnly, forKey: "forceHapticOnly")
             updateUseAudio()
         }
     }
@@ -35,6 +36,7 @@ class MetronomeEngine: NSObject, ObservableObject {
         configureAudioSession()
         prepareAudioPlayer()
         observeRouteChanges()
+        updateUseAudio()   // Ensures audio/haptic state matches saved toggle
     }
 
     // MARK: - Audio session (simple playback, mixes with music)
