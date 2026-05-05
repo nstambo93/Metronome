@@ -253,14 +253,13 @@ class MetronomeEngine: NSObject, ObservableObject {
     private func stopWorkoutSession() {
         let endDate = Date()
         workoutSession?.stopActivity(with: endDate)
-        workoutSession?.end()
         workoutBuilder?.endCollection(withEnd: endDate) { [weak self] (success, error) in
             if success {
-                self?.workoutBuilder?.finishWorkout { (workout, error) in
-                    if let error = error { print("Finish workout error: \(error)") }
-                }
+                // Discard the workout – it will NOT be saved to Health
+                self?.workoutBuilder?.discardWorkout()
             }
         }
+        workoutSession?.end()
     }
     
     // Haptic toggle
