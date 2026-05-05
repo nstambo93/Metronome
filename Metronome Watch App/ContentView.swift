@@ -44,25 +44,26 @@ struct ContentView: View {
                         engine.updateBPM(clamped)
                     }
 
-                HStack(spacing: 16) {
-                    Button {
-                        bpm = max(120, bpm - 5)
-                        engine.updateBPM(bpm)
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.title2)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Button {
-                        bpm = min(200, bpm + 5)
-                        engine.updateBPM(bpm)
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
+//                +/- buttons
+//                HStack(spacing: 16) {
+//                    Button {
+//                        bpm = max(120, bpm - 5)
+//                        engine.updateBPM(bpm)
+//                    } label: {
+//                        Image(systemName: "minus.circle.fill")
+//                            .font(.title2)
+//                    }
+//                    .buttonStyle(PlainButtonStyle())
+//
+//                    Button {
+//                        bpm = min(200, bpm + 5)
+//                        engine.updateBPM(bpm)
+//                    } label: {
+//                        Image(systemName: "plus.circle.fill")
+//                            .font(.title2)
+//                    }
+//                    .buttonStyle(PlainButtonStyle())
+//                }
 
                 Button {
                     if engine.isRunning {
@@ -99,19 +100,17 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12)
 
-            // Info button – top left
+            // Info button – tiny, top‑left, aligned with time
             Button {
                 showInfo.toggle()
             } label: {
-                Image(systemName: "info.circle.fill")
-                    .font(.title3)
+                Image(systemName: "info.circle")
+                    .font(.caption2)                // smallest readable size
                     .foregroundColor(.secondary)
-                    .padding(8)
-                    .background(Circle().fill(Color.black.opacity(0.25)))
             }
             .buttonStyle(PlainButtonStyle())
-            .padding(.leading, 4)
-            .padding(.top, 4)
+            .padding(.leading, 6)   // barely away from the left bezel
+            .padding(.top, 2)       // near the top edge
         }
         .sheet(isPresented: $showInfo) {
             InfoView()

@@ -34,7 +34,7 @@ struct InfoView: View {
                     Text("• The Digital Crown changes BPM in steps of 5.")
                 }
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(.secondary)    
             }
             .padding()
         }
