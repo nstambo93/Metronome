@@ -1,7 +1,13 @@
+//
+//  MetronomeEngine.swift
+//  Metronome Watch App
+//
+//  Created by Nick Stamboolian on 5/4/26.
+//
+
 import Foundation
 import AVFAudio
 import WatchKit
-import HealthKit
 import Combine
 
 class MetronomeEngine: NSObject, ObservableObject {
@@ -10,7 +16,9 @@ class MetronomeEngine: NSObject, ObservableObject {
     private var bpm: Double = 180
     private var audioPlayer: AVAudioPlayer?
     private var useAudio = false
-    // Haptic toggle
+    private var extendedSession: WKExtendedRuntimeSession?
+
+    // Haptic toggle – persisted in UserDefaults
     @Published var forceHapticOnly: Bool = UserDefaults.standard.bool(forKey: "forceHapticOnly") {
         didSet {
             UserDefaults.standard.set(forceHapticOnly, forKey: "forceHapticOnly")
@@ -18,14 +26,9 @@ class MetronomeEngine: NSObject, ObservableObject {
         }
     }
 
-    // Silent background audio (AVAudioEngine) – proven to keep session alive when minimized
+    // Silent background audio (AVAudioEngine) – keeps session alive when minimized
     private var audioEngine: AVAudioEngine?
     private var silentNode: AVAudioPlayerNode?
-
-    // HealthKit workout session
-    private let healthStore = HKHealthStore()
-    private var workoutSession: HKWorkoutSession?
-    private var workoutBuilder: HKLiveWorkoutBuilder?
 
     private let woodblockURL: URL? = {
         Bundle.main.url(forResource: "woodblock", withExtension: "m4a")
@@ -36,10 +39,10 @@ class MetronomeEngine: NSObject, ObservableObject {
         configureAudioSession()
         prepareAudioPlayer()
         observeRouteChanges()
-        updateUseAudio()   // Ensures audio/haptic state matches saved toggle
+        updateUseAudio()   // apply the saved haptic preference on launch
     }
 
-    // MARK: - Audio session (simple playback, mixes with music)
+    // MARK: - Audio session
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
@@ -81,40 +84,49 @@ class MetronomeEngine: NSObject, ObservableObject {
 
     @objc private func audioRouteChanged(notification: Notification) {
         DispatchQueue.main.async {
-            // Haptic toggle
             self.updateUseAudio()
-//            self.useAudio = self.isHeadphonesConnected()
+
+            guard self.isRunning else { return }
+
+            // Stop the current silent engine immediately (it's likely dead)
+            self.stopSilentBackgroundAudio()
+
+            // Wait a moment for the audio route to settle, then restart
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                guard self.isRunning else { return }
+                self.startSilentBackgroundAudio()
+            }
         }
     }
 
-    // MARK: - Start / Stop (with HealthKit authorization)
+    // MARK: - Start / Stop (with Extended Runtime Session, no HealthKit)
     func start(bpm: Double) {
         self.bpm = bpm
-        // Haptic toggle
         updateUseAudio()
-//        useAudio = isHeadphonesConnected()
-        requestHealthKitAuthorization { [weak self] authorized in
-            guard let self = self, authorized else {
-                print("HealthKit authorization denied")
-                return
-            }
-            self.startWorkoutSession()
-            self.startTimer()
-            self.startSilentBackgroundAudio()
-            DispatchQueue.main.async {
-                self.isRunning = true
-            }
-        }
+        startTimer()
+        startSilentBackgroundAudio()   // keep app alive in background via audio
+        startExtendedSession()         // primary background guarantee
+        isRunning = true
     }
 
     func stop() {
         timer?.cancel()
         timer = nil
-        stopWorkoutSession()
+        stopExtendedSession()
         stopSilentBackgroundAudio()
-        DispatchQueue.main.async {
-            self.isRunning = false
-        }
+        isRunning = false
+    }
+
+    // MARK: - Extended Runtime Session (Physical Therapy type – no HealthKit, no conflicts)
+    private func startExtendedSession() {
+        extendedSession = WKExtendedRuntimeSession()
+        extendedSession?.delegate = self
+        extendedSession?.start()
+    }
+
+    private func stopExtendedSession() {
+        extendedSession?.invalidate()
+        extendedSession = nil
     }
 
     // MARK: - Timer & Beat
@@ -125,6 +137,11 @@ class MetronomeEngine: NSObject, ObservableObject {
         timer?.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(1))
         timer?.setEventHandler { [weak self] in
             self?.tick()
+            // Keep the silent engine alive – restart if it died
+            if self?.audioEngine?.isRunning == false && self?.isRunning == true {
+                self?.stopSilentBackgroundAudio()
+                self?.startSilentBackgroundAudio()
+            }
         }
         timer?.resume()
     }
@@ -140,7 +157,7 @@ class MetronomeEngine: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Silent background audio (AVAudioEngine – proven on watchOS)
+    // MARK: - Silent background audio (keeps session alive, resilient to interruptions)
     private func startSilentBackgroundAudio() {
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
@@ -148,24 +165,37 @@ class MetronomeEngine: NSObject, ObservableObject {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: nil)
 
-        // Create a short silent buffer that matches the player's output format
-        let sampleRate = 44100.0
-        let duration = 0.1
+        // Inaudible low‑frequency tone to keep audio session alive
+        let sampleRate: Double = 44100
+        let frequency: Double = 10.0        // Hz – well below human hearing
+        let amplitude: Float = 0.0001       // near zero, inaudible
+        let duration: Double = 0.1
         let frameCount = AVAudioFrameCount(sampleRate * duration)
 
-        // Important: use the player node's output format to avoid channel count mismatch
-        let mixerFormat = player.outputFormat(forBus: 0)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: mixerFormat, frameCapacity: frameCount) else {
-            print("Failed to create silent buffer")
+        let format = player.outputFormat(forBus: 0)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            print("Failed to create tone buffer")
             return
         }
         buffer.frameLength = frameCount
-        // buffer is already zeroed (silent)
+
+        // Generate sine wave samples
+        let channelData = buffer.floatChannelData?[0]
+        for i in 0..<Int(frameCount) {
+            let sample = sin(2.0 * .pi * frequency * Double(i) / sampleRate)
+            channelData?[i] = Float(sample) * amplitude
+        }
 
         player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
 
+        // Force session active before starting engine
+        try? AVAudioSession.sharedInstance().setActive(true)
+
         do {
             try engine.start()
+            print("Silent engine started successfully")
+            // Ensure session remains active after engine start
+            try? AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Silent engine start error: \(error.localizedDescription)")
             return
@@ -176,7 +206,7 @@ class MetronomeEngine: NSObject, ObservableObject {
         audioEngine = engine
         silentNode = player
 
-        // Listen for interruptions (widgets, calls) so we can restart
+        // Interruption handler
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleAudioInterruption),
@@ -206,73 +236,20 @@ class MetronomeEngine: NSObject, ObservableObject {
         if type == .ended {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.isRunning else { return }
-                // Restart the silent engine after interruption ends
                 self.stopSilentBackgroundAudio()
                 self.startSilentBackgroundAudio()
             }
         }
     }
 
-    // MARK: - HealthKit authorization (asks once, then remembers)
-    private func requestHealthKitAuthorization(completion: @escaping (Bool) -> Void) {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            completion(false)
-            return
-        }
-        let workoutType = HKObjectType.workoutType()
-        healthStore.requestAuthorization(toShare: [workoutType], read: []) { success, error in
-            DispatchQueue.main.async {
-                completion(success)
-            }
-        }
-    }
-
-    // MARK: - HKWorkoutSession (keeps app alive)
-    private func startWorkoutSession() {
-        let config = HKWorkoutConfiguration()
-        config.activityType = .running
-        config.locationType = .outdoor
-
-        do {
-            workoutSession = try HKWorkoutSession(healthStore: healthStore,
-                                                  configuration: config)
-            workoutBuilder = workoutSession?.associatedWorkoutBuilder()
-        } catch {
-            print("Workout session error: \(error)")
-            return
-        }
-
-        workoutSession?.delegate = self
-        workoutBuilder?.delegate = self
-
-        let startDate = Date()
-        workoutSession?.startActivity(with: startDate)
-        workoutBuilder?.beginCollection(withStart: startDate) { (success, error) in
-            if let error = error { print("Builder start error: \(error)") }
-        }
-    }
-
-    private func stopWorkoutSession() {
-        let endDate = Date()
-        workoutSession?.stopActivity(with: endDate)
-        workoutBuilder?.endCollection(withEnd: endDate) { [weak self] (success, error) in
-            if success {
-                // Discard the workout – it will NOT be saved to Health
-                self?.workoutBuilder?.discardWorkout()
-            }
-        }
-        workoutSession?.end()
-    }
-    
-    // Haptic toggle
+    // MARK: - BPM & haptic logic
     private func updateUseAudio() {
         useAudio = !forceHapticOnly && isHeadphonesConnected()
     }
-    
+
     func updateBPM(_ newBPM: Double) {
         guard newBPM > 0 else { return }
         bpm = newBPM
-        // Only restart the timer – keep workout session and silent audio alive
         if isRunning {
             timer?.cancel()
             startTimer()
@@ -280,20 +257,26 @@ class MetronomeEngine: NSObject, ObservableObject {
     }
 }
 
-// MARK: - HKWorkoutSessionDelegate & HKLiveWorkoutBuilderDelegate
-extension MetronomeEngine: HKWorkoutSessionDelegate, HKLiveWorkoutBuilderDelegate {
-    func workoutSession(_ workoutSession: HKWorkoutSession,
-                        didChangeTo toState: HKWorkoutSessionState,
-                        from fromState: HKWorkoutSessionState,
-                        date: Date) {}
+// MARK: - WKExtendedRuntimeSessionDelegate
+extension MetronomeEngine: WKExtendedRuntimeSessionDelegate {
+    func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
 
-    func workoutSession(_ workoutSession: HKWorkoutSession,
-                        didFailWithError error: Error) {
-        print("Workout session failed: \(error)")
+    func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        // Renew the session if the metronome is still running (for runs longer than 1 hour)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.isRunning else { return }
+            self.stopExtendedSession()
+            self.startExtendedSession()
+        }
     }
 
-    func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder,
-                        didCollectDataOf collectedTypes: Set<HKSampleType>) {}
-
-    func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
+    func extendedRuntimeSession(_ extendedRuntimeSession: WKExtendedRuntimeSession,
+                                didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason,
+                                error: Error?) {
+        // Unexpected invalidation – restart if still running
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.isRunning else { return }
+            self.startExtendedSession()
+        }
+    }
 }
