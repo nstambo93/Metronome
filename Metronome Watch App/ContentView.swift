@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  Metronome Watch App
-//
-//  Created by Nick Stamboolian on 5/4/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
@@ -17,8 +10,8 @@ struct ContentView: View {
     @State private var showInfo = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Main vertical stack (your existing layout)
+        ZStack {
+            // Main controls – unchanged
             VStack(spacing: 6) {
                 Spacer(minLength: 8)
 
@@ -44,7 +37,6 @@ struct ContentView: View {
                         engine.updateBPM(clamped)
                     }
 
-//                +/- buttons
 //                HStack(spacing: 16) {
 //                    Button {
 //                        bpm = max(120, bpm - 5)
@@ -85,32 +77,55 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
                     .font(.caption2)
 
-                Button {
-                    showSettings.toggle()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "gear")
-                        Text("Settings")
-                    }
-                    .font(.caption)
-                }
-                .buttonStyle(PlainButtonStyle())
-
                 Spacer(minLength: 8)
             }
             .padding(.horizontal, 12)
 
-            // Info button – tiny, top‑left, aligned with time
-            Button {
-                showInfo.toggle()
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.caption2)                // smallest readable size
-                    .foregroundColor(.secondary)
+            // Bottom‑left: Info button (white "i" inside a circle)
+            VStack {
+                Spacer()
+                HStack {
+                    Button {
+                        showInfo.toggle()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.secondary.opacity(0.15))
+                                .frame(width: 28, height: 28)
+                            Image(systemName: "info.circle.fill")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.leading, 12)
+                    .padding(.bottom, 8)
+                    Spacer()
+                }
             }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.leading, 6)   // barely away from the left bezel
-            .padding(.top, 2)       // near the top edge
+
+            // Bottom‑right: Settings button (gear only, same circular style)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button {
+                        showSettings.toggle()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.secondary.opacity(0.15))
+                                .frame(width: 28, height: 28)
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 8)
+                }
+            }
         }
         .sheet(isPresented: $showInfo) {
             InfoView()
