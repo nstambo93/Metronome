@@ -18,6 +18,7 @@ struct BPMPickerView: View {
             Picker("BPM", selection: $tempBPM) {
                 ForEach(Array(stride(from: 120.0, through: 200.0, by: 5.0)), id: \.self) { value in
                     Text("\(Int(value))")
+                        .font(.system(size: 25, weight: .semibold))
                         .tag(value)
                 }
             }
