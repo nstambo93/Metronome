@@ -8,7 +8,42 @@ struct ContentView: View {
     }()
     @State private var showSettings = false
     @State private var showInfo = false
+    
+    private var crownBinding: Binding<Double> {
+        Binding<Double>(
+            get: { bpm },
+            set: { newValue in
+                let step = 5.0
+                let minBPM = 120.0
+                let maxBPM = 200.0
 
+                // Snap to nearest multiple of step, then clamp
+                let snapped = round(min(max(newValue, minBPM), maxBPM) / step) * step
+                let clamped = min(max(snapped, minBPM), maxBPM)
+
+                // Detect wrap‑around by comparing with the current bpm
+                // (the last valid snapped value stored in bpm)
+                let delta = abs(clamped - bpm)
+                if delta > step * 2 {
+                    // Crown wrapped – stay at the boundary
+                    if bpm >= maxBPM - step {
+                        bpm = maxBPM
+                    } else if bpm <= minBPM + step {
+                        bpm = minBPM
+                    }
+                    engine.updateBPM(bpm)
+                    return
+                }
+
+                // Normal change – accept the snapped & clamped value
+                if clamped != bpm {
+                    bpm = clamped
+                    engine.updateBPM(clamped)
+                }
+            }
+        )
+    }
+    
     var body: some View {
         ZStack {
             // Main controls – unchanged
@@ -20,7 +55,7 @@ struct ContentView: View {
                     .fontWeight(.bold)
                     .focusable(true)
                     .digitalCrownRotation(
-                        $bpm,
+                        crownBinding,      // use the custom binding instead of $bpm
                         from: 120.0,
                         through: 200.0,
                         by: 5.0,
@@ -28,14 +63,6 @@ struct ContentView: View {
                         isContinuous: true,
                         isHapticFeedbackEnabled: false
                     )
-                    .onChange(of: bpm) { oldValue, newValue in
-                        let rounded = round(newValue / 5) * 5
-                        let clamped = min(max(rounded, 120), 200)
-                        if clamped != bpm {
-                            bpm = clamped
-                        }
-                        engine.updateBPM(clamped)
-                    }
 
 //                HStack(spacing: 16) {
 //                    Button {
@@ -57,11 +84,12 @@ struct ContentView: View {
 //                    .buttonStyle(PlainButtonStyle())
 //                }
 
+//              Start/Stop Button
                 Button {
                     if engine.isRunning {
                         engine.stop()
                     } else {
-                        engine.start(bpm: bpm)
+                        engine.start(   bpm: bpm)
                     }
                 } label: {
                     Text(engine.isRunning ? "Stop" : "Start")
@@ -73,6 +101,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
 
+//              Status Message
                 Text(engine.isRunning ? (engine.forceHapticOnly ? "Tapping (haptic)" : "Ticking...") : "Ready")
                     .foregroundColor(.secondary)
                     .font(.caption2)
