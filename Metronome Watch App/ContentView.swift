@@ -16,7 +16,7 @@ struct ContentView: View {
     @State private var crownTurnedOnce = false          // true after first successful turn
     @State private var crownTimer: Timer?
 
-    private let turnThreshold = 10.0                    // detents required for one "deliberate turn"
+    private let turnThreshold = 5.0                    // detents required for one "deliberate turn"
 
     var body: some View {
         ZStack {
