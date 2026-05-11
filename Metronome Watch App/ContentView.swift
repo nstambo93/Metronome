@@ -61,7 +61,7 @@ struct ContentView: View {
                         by: 5.0,
                         sensitivity: .medium,
                         isContinuous: true,
-                        isHapticFeedbackEnabled: false
+                        isHapticFeedbackEnabled: true // FIXME: Taps when decrementing/incrementing at min/max
                     )
 
 //                HStack(spacing: 16) {
