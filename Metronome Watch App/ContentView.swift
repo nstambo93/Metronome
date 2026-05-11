@@ -8,88 +8,70 @@ struct ContentView: View {
     }()
     @State private var showSettings = false
     @State private var showInfo = false
-    
-    private var crownBinding: Binding<Double> {
-        Binding<Double>(
-            get: { bpm },
-            set: { newValue in
-                let step = 5.0
-                let minBPM = 120.0
-                let maxBPM = 200.0
+    @State private var showPicker = false
 
-                // Snap to nearest multiple of step, then clamp
-                let snapped = round(min(max(newValue, minBPM), maxBPM) / step) * step
-                let clamped = min(max(snapped, minBPM), maxBPM)
+    // Two‑step deliberate‑turn detection
+    @State private var crownValue: Double = 0          // value coming from the crown (never shows on UI)
+    @State private var crownTravel: Double = 0          // total absolute movement since last reset
+    @State private var crownTurnedOnce = false          // true after first successful turn
+    @State private var crownTimer: Timer?
 
-                // Detect wrap‑around by comparing with the current bpm
-                // (the last valid snapped value stored in bpm)
-                let delta = abs(clamped - bpm)
-                if delta > step * 2 {
-                    // Crown wrapped – stay at the boundary
-                    if bpm >= maxBPM - step {
-                        bpm = maxBPM
-                    } else if bpm <= minBPM + step {
-                        bpm = minBPM
-                    }
-                    engine.updateBPM(bpm)
-                    return
-                }
+    private let turnThreshold = 10.0                    // detents required for one "deliberate turn"
 
-                // Normal change – accept the snapped & clamped value
-                if clamped != bpm {
-                    bpm = clamped
-                    engine.updateBPM(clamped)
-                }
-            }
-        )
-    }
-    
     var body: some View {
         ZStack {
-            // Main controls – unchanged
             VStack(spacing: 6) {
                 Spacer(minLength: 8)
 
-                Text("\(Int(bpm)) BPM")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .focusable(true)
-                    .digitalCrownRotation(
-                        crownBinding,      // use the custom binding instead of $bpm
-                        from: 120.0,
-                        through: 200.0,
-                        by: 5.0,
-                        sensitivity: .medium,
-                        isContinuous: true,
-                        isHapticFeedbackEnabled: true // FIXME: Taps when decrementing/incrementing at min/max
-                    )
+                // BPM label – tap to open picker, crown for two‑step open
+                Button {
+                    showPicker = true
+                    resetCrownState()
+                } label: {
+                    Text("\(Int(bpm)) BPM")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .focusable(true)                         // enables green focus ring when crown active
+                .digitalCrownRotation(
+                    $crownValue,
+                    from: 0.0,
+                    through: 10000.0,                    // huge range – no wrap during normal use
+                    by: 1.0,
+                    sensitivity: .medium,
+                    isContinuous: true,                  // live updates, no scroll bar
+                    isHapticFeedbackEnabled: false
+                )
+                .onChange(of: crownValue) { oldValue, newValue in
+                    // compute how many detents were just turned (absolute value)
+                    let delta = abs(newValue - oldValue)
+                    // ignore huge jumps that might be initialisation or glitches
+                    guard delta < 1000 else { return }
 
-//                HStack(spacing: 16) {
-//                    Button {
-//                        bpm = max(120, bpm - 5)
-//                        engine.updateBPM(bpm)
-//                    } label: {
-//                        Image(systemName: "minus.circle.fill")
-//                            .font(.title2)
-//                    }
-//                    .buttonStyle(PlainButtonStyle())
-//
-//                    Button {
-//                        bpm = min(200, bpm + 5)
-//                        engine.updateBPM(bpm)
-//                    } label: {
-//                        Image(systemName: "plus.circle.fill")
-//                            .font(.title2)
-//                    }
-//                    .buttonStyle(PlainButtonStyle())
-//                }
+                    crownTravel += delta
 
-//              Start/Stop Button
+                    if crownTravel >= turnThreshold {
+                        // one deliberate turn completed
+                        if crownTurnedOnce {
+                            // second turn → open the picker
+                            showPicker = true
+                            resetCrownState()
+                        } else {
+                            // first turn → mark intent and start timer
+                            crownTurnedOnce = true
+                            startCrownTimer()
+                        }
+                        crownTravel = 0                // reset for next turn
+                    }
+                }
+
+                // Start/Stop Button
                 Button {
                     if engine.isRunning {
                         engine.stop()
                     } else {
-                        engine.start(   bpm: bpm)
+                        engine.start(bpm: bpm)
                     }
                 } label: {
                     Text(engine.isRunning ? "Stop" : "Start")
@@ -101,7 +83,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
 
-//              Status Message
+                // Status Message
                 Text(engine.isRunning ? (engine.forceHapticOnly ? "Tapping (haptic)" : "Ticking...") : "Ready")
                     .foregroundColor(.secondary)
                     .font(.caption2)
@@ -110,7 +92,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12)
 
-            // Bottom‑left: Info button (white "i" inside a circle)
+            // Bottom‑left: Info button
             VStack {
                 Spacer()
                 HStack {
@@ -133,7 +115,7 @@ struct ContentView: View {
                 }
             }
 
-            // Bottom‑right: Settings button (gear only, same circular style)
+            // Bottom‑right: Settings button
             VStack {
                 Spacer()
                 HStack {
@@ -156,11 +138,27 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showInfo) {
-            InfoView()
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(engine: engine)
+        .sheet(isPresented: $showInfo) { InfoView() }
+        .sheet(isPresented: $showSettings) { SettingsView(engine: engine) }
+        .sheet(isPresented: $showPicker) { BPMPickerView(selectedBPM: $bpm, isPresented: $showPicker) }
+    }
+
+    // MARK: - Crown helpers
+
+    private func resetCrownState() {
+        crownTravel = 0
+        crownTurnedOnce = false
+        crownTimer?.invalidate()
+        crownTimer = nil
+    }
+
+    private func startCrownTimer() {
+        crownTimer?.invalidate()
+        // If no second turn within 3 seconds, forget the first turn
+        crownTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+            DispatchQueue.main.async {
+                self.crownTurnedOnce = false
+            }
         }
     }
 }
