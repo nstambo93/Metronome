@@ -152,7 +152,7 @@ class MetronomeEngine: NSObject, ObservableObject {
             audioPlayer?.play()
         } else {
             DispatchQueue.main.async {
-                WKInterfaceDevice.current().play(.click)
+                WKInterfaceDevice.current().play(.start) //(.click)
             }
         }
     }
@@ -265,7 +265,7 @@ extension MetronomeEngine: WKExtendedRuntimeSessionDelegate {
         // Renew the session if the metronome is still running (for runs longer than 1 hour)
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.isRunning else { return }
-            self.stopExtendedSession()
+//            self.stopExtendedSession()
             self.startExtendedSession()
         }
     }
